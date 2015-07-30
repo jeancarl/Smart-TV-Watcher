@@ -1,0 +1,102 @@
+/**
+ *  SmartToWeb
+ *
+ *  Copyright 2015 JeanCarl Bisson
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+ *  in compliance with the License. You may obtain a copy of the License at:
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software distributed under the License is distributed
+ *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
+ *  for the specific language governing permissions and limitations under the License.
+ *
+ */
+definition(
+    name: "Smart TV Watcher",
+    namespace: "com.jeancarlbisson.smarttvwatcher",
+    author: "JeanCarl Bisson",
+    description: "Solve math problems and earn TV time. ",
+    category: "Fun & Social",
+    iconUrl: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience.png",
+    iconX2Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
+    iconX3Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
+    oauth: true)
+
+preferences {
+
+    section("Webhook URL"){
+        input "url", "text", title: "Webhook URL", description: "Your webhook URL", required: true
+    }
+
+    section("Choose what events you want to trigger"){
+        input "switchv", "capability.switch", title: "Switch", required: false, multiple: true
+    }
+    
+    section("Send a text message to this number") {
+        input "phone", "phone", required: true
+    }    
+}
+
+def installed() {
+    log.debug "Installed with settings: ${settings}"
+    subscribeToEvents()
+    initialize()
+}
+
+def updated() {
+    log.debug "Updated with settings: ${settings}"
+    unsubscribe()
+    subscribeToEvents()
+}
+
+def subscribeToEvents() {
+    subscribe(app, appEventHandler)
+    subscribe(switchv, "switch", eventHandler)
+}
+
+def appEventHandler(evt) {
+    if(state.expiration != "") {
+        sendPushMessage("You have until "+state.expiration+" to watch TV.");
+    }
+}
+
+def eventHandler(evt) {
+    if(evt.value == "on") { 
+        httpPostJson([
+            uri: "${settings.url}/api/gettime",
+            body: [
+                id: evt.deviceId, 
+                displayname: evt.displayName, 
+            ] 
+        ]) { resp ->
+            if(resp.data.timeLeft == 0){
+                turnOff()
+                sendSmsMessage(phone, "Get more time at: ${settings.url}/#/play/${evt.deviceId}")
+            }
+            else
+            {
+                def d = new Date()
+                def e = new Date(d.getTime()+(resp.data.timeLeft.toInteger()*1000))
+                state.expiration = e.toString()
+
+                httpPostJson([
+                    uri: "${settings.url}/api/resettime/${evt.deviceId}",
+                    body: []
+                ]) { resps ->
+                }   
+
+                sendPush("You have until "+state.expiration+" to watch TV.")
+            }
+
+            runIn(resp.data.timeLeft, turnOff)
+        }
+    } else {
+        state.expiration = ""
+    }
+}
+
+def turnOff() {
+    switchv.off()
+}

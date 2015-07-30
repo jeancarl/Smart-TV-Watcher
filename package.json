@@ -1,0 +1,12 @@
+{
+  "name": "hear-it",
+  "description": "Smart TV Watcher game for Node.js",
+  "version": "0.0.1",
+  "private": true,
+  "dependencies": {
+    "express": "*",
+    "url": "",    
+    "body-parser": "*",
+    "mongoose": "*"
+  }
+}
